@@ -3,6 +3,7 @@ library(testthat)
 args <- commandArgs(trailingOnly = TRUE)
 target_dir <- args[1]  
 student_file <- args[2]  
+feedback_file_path <- args[3]
 
 full_student_path <- file.path(target_dir, student_file)
 full_tests_path <- file.path(target_dir, "tests.R")
@@ -21,7 +22,7 @@ if (any(grepl("library\\s*\\(|require\\s*\\(", file_content))) {
   report <- c(report, 
               "❌ **CRITICAL ERROR:** External packages are strictly forbidden for this assignment!",
               "### FINAL GRADE: FAIL ❌")
-  writeLines(report, "../../feedback.md")
+  writeLines(report, feedback_file_path)
   
   quit(status = 0)
   
@@ -34,7 +35,7 @@ tryCatch(
                 "❌ **CRITICAL ERROR:** Your script failed to run due to a syntax error!",
                 "```text", as.character(e), "```",
                 "### FINAL GRADE: FAIL ❌")
-    writeLines(report, "../../feedback.md")
+    writeLines(report, feedback_file_path)
     quit(status = 0) 
   }
 )
@@ -64,4 +65,4 @@ if (total_problems > 0) {
   
 }
 
-writeLines(report, "../../feedback.md")
+writeLines(report, feedback_file_path)
