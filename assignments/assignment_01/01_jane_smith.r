@@ -3,9 +3,6 @@
 # Name: Jane Smith
 # ==========================================
 
-# CRITICAL ERROR TEST: This should trigger the forbidden library blocker!
-# library(tidyverse) 
-
 # TASK 1: Vector Creation & Arithmetic
 weights <- c(55, 62, 78, 91, 48)
 # Student mistake: Multiplied by 2.0 instead of 2.2
