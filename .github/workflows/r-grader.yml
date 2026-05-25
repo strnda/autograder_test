@@ -49,7 +49,7 @@ jobs:
           echo "STUDENT_FILE=$STUDENT_FILE" >> $GITHUB_OUTPUT
 
       # Step 3: Anti-cheating security check
-      # Centralized Change: Forcefully restores your master grading file from your main branch
+      # Forcefully restores your master grading file from your main branch
       - name: Force restore master grading tests
         if: steps.detect-folder.outputs.ASSIGNMENT_DIR != ''
         run: |
@@ -73,7 +73,7 @@ jobs:
             any::testthat
 
       # Step 6: Run the Centralized Grading Engine
-      # Centralized Change: Passes both folder string and file string as distinct command line parameters
+      # R script handles generating and dropping the feedback file into the root folder natively
       - name: Run Autograder
         id: run_tests
         if: steps.detect-folder.outputs.ASSIGNMENT_DIR != ''
@@ -81,14 +81,36 @@ jobs:
           ASSIGNMENT_DIR: ${{ steps.detect-folder.outputs.ASSIGNMENT_DIR }}
           STUDENT_FILE: ${{ steps.detect-folder.outputs.STUDENT_FILE }}
         run: |
-          # Verify student is not messing with the testing infrastructure directly
           if [ "${STUDENT_FILE,,}" = "tests.r" ] || [ "${STUDENT_FILE,,}" = "run_tests.r" ]; then
             echo "# ❌ Error: Invalid filename targeting. Do not alter system test files." > feedback.md
             exit 1
           fi
 
-          # Call the core engine in the root directory and dump log strings into the markdown scorecard
-          Rscript .autograder/run_tests.R "$ASSIGNMENT_DIR" "$STUDENT_FILE" > feedback.md
+          # Change context into the student folder so relative script parsing targets smoothly
+          cd $ASSIGNMENT_DIR
+          Rscript ../../.autograder/run_tests.R "." "$STUDENT_FILE"
         continue-on-error: true
 
-      # Step 7: Handle normal PRs (ungraded homework/
+      # Step 7: Handle normal PRs (ungraded homework/notes/docs)
+      - name: Handle Ungraded Submission
+        if: steps.detect-folder.outputs.ASSIGNMENT_DIR == ''
+        run: |
+          echo "# ℹ️ General Submission Noted" > feedback.md
+          echo "This Pull Request does not contain a formal assignment file matching the tracking format (\`XX_name.R\` or \`XX_name.r\`)." >> feedback.md
+          echo "No automated tests were executed. This code is ready for human review!" >> feedback.md
+
+      # Step 8: Post the Markdown scorecard directly onto the PR thread
+      - name: Post feedback to Pull Request
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: autograder-results
+          path: feedback.md
+
+      # Step 9: Make the workflow pass or fail based on test criteria
+      - name: Check test status
+        if: steps.detect-folder.outputs.ASSIGNMENT_DIR != ''
+        run: |
+          if grep -q "FAIL" feedback.md; then
+            echo "Tests failed!"
+            exit 1
+          fi
