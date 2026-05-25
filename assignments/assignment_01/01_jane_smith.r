@@ -18,4 +18,4 @@ avg_weight <- mean(weights_lb)
 
 # TASK 4: Logical Indexing (Filtering)
 # Student mistake: Forgot to complete this task entirely (variable is missing)
-# heavy_count <-
+heavy_count <- sum(weights > 60)
