@@ -15,25 +15,35 @@ jobs:
       - name: Checkout student submission
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Fetches all history so git diff can see changed files
+          fetch-depth: 0 # Fetches full history so git diff can compare branches accurately
 
-      # Step 2: Extract assignment directory and check student naming convention
+      # Step 2: Extract assignment directory (Case-Insensitive for .R or .r)
       - name: Detect Changed Assignment Folder
         id: detect-folder
         run: |
-          CHANGED_FILES=$(git diff --name-only origin/main...HEAD)
+          # Fetch the base branch history so git diff can reference it
+          git fetch origin ${{ github.base_ref }} --depth=1
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
           
+          echo "--- DEBUG INFO ---"
+          echo "Detected files changed in this PR:"
+          echo "$CHANGED_FILES"
+          echo "------------------"
+
           ASSIGNMENT_DIR=""
           STUDENT_FILE=""
 
-          # Loop through files to find one matching: assignments/assignment_XX/XX_*.R
+          # Loop through files to find one matching: assignments/.../XX_*.R (or .r)
           for file in $CHANGED_FILES; do
-            if [[ "$file" =~ ^assignments/assignment_[0-9]+/([0-9]+)_.*\.R$ ]]; then
+            if [[ "$file" =~ assignments/.*\/[0-9]+_.*\.[rR]$ ]]; then
               ASSIGNMENT_DIR=$(dirname "$file")
               STUDENT_FILE=$(basename "$file")
               break # Found the official assignment file, exit loop
             fi
           done
+          
+          echo "Found Assignment Directory: $ASSIGNMENT_DIR"
+          echo "Found Student File: $STUDENT_FILE"
           
           echo "ASSIGNMENT_DIR=$ASSIGNMENT_DIR" >> $GITHUB_OUTPUT
           echo "STUDENT_FILE=$STUDENT_FILE" >> $GITHUB_OUTPUT
@@ -73,8 +83,8 @@ jobs:
         run: |
           cd $ASSIGNMENT_DIR
           
-          # Catch if they accidentally target or overwrite the test file name
-          if [ "$STUDENT_FILE" = "run_tests.R" ]; then
+          # Catch if they accidentally target or overwrite the test file name (case-insensitive check)
+          if [ "${STUDENT_FILE,,}" = "run_tests.r" ]; then
             echo "# ❌ Error: You cannot submit changes to run_tests.R" > ../../feedback.md
             exit 1
           fi
@@ -83,12 +93,12 @@ jobs:
           Rscript run_tests.R "$STUDENT_FILE" > ../../feedback.md
         continue-on-error: true
 
-      # Step 7: Handle normal PRs (ungraded homework/notes)
+      # Step 7: Handle normal PRs (ungraded homework/notes/docs)
       - name: Handle Ungraded Submission
         if: steps.detect-folder.outputs.ASSIGNMENT_DIR == ''
         run: |
           echo "# ℹ️ General Submission Noted" > feedback.md
-          echo "This Pull Request does not contain a formal assignment file matching the tracking format (\`XX_name.R\`)." >> feedback.md
+          echo "This Pull Request does not contain a formal assignment file matching the tracking format (\`XX_name.R\` or \`XX_name.r\`)." >> feedback.md
           echo "No automated tests were executed. This code is ready for human review!" >> feedback.md
 
       # Step 8: Post the Markdown scorecard directly onto the PR thread
