@@ -1,71 +1,67 @@
 library(testthat)
 
-# Capture BOTH arguments from the workflow runner
 args <- commandArgs(trailingOnly = TRUE)
-target_dir <- args[1]  # e.g., "assignments/assignment_01"
-student_file <- args[2]  # e.g., "01_john_doe.R"
+target_dir <- args[1]  
+student_file <- args[2]  
 
-# Construct absolute paths to the files
 full_student_path <- file.path(target_dir, student_file)
-full_tests_path   <- file.path(target_dir, "tests.R")
+full_tests_path <- file.path(target_dir, "tests.R")
 
-cat("# 📊 Assignment Grading Results\n\n")
-cat(paste0("⚙️ **Evaluating file:** `", full_student_path, "`\n\n"))
+report <- c(
+  "# 📊 Assignment Grading Results",
+  "",
+  paste0("⚙️ **Evaluating file:** `", full_student_path, "`"),
+  ""
+)
 
-# 1. Base R Validation Check
-# 
 file_content <- suppressWarnings(readLines(full_student_path))
 
 if (any(grepl("library\\s*\\(|require\\s*\\(", file_content))) {
   
-  cat("❌ **CRITICAL ERROR:** External packages are strictly forbidden for this assignment!\n")
-  cat("### FINAL GRADE: FAIL ❌\n")
+  report <- c(report, 
+              "❌ **CRITICAL ERROR:** External packages are strictly forbidden for this assignment!",
+              "### FINAL GRADE: FAIL ❌")
+  writeLines(report, "../../feedback.md")
   
   quit(status = 0)
   
 }
 
-# 2. Source the student's submission file safely
 tryCatch(
-  expr = {
-    
-    source(file = full_student_path)
-    
-  }, error = function(e) {
-    
-    cat("❌ **CRITICAL ERROR:** Your script failed to run due to a syntax error!\n")
-    cat("```text\n", as.character(e), "\n```\n")
-    cat("### FINAL GRADE: FAIL ❌\n")
-    
+  expr = source(file = full_student_path), 
+  error = function(e) {
+    report <- c(report, 
+                "❌ **CRITICAL ERROR:** Your script failed to run due to a syntax error!",
+                "```text", as.character(e), "```",
+                "### FINAL GRADE: FAIL ❌")
+    writeLines(report, "../../feedback.md")
     quit(status = 0) 
-    
   }
 )
 
-# 3. Cleanly evaluate the assignment-specific test file
-cat("### Test Suite Summary\n\n")
-test_results <- as.data.frame(x = test_file(path = full_tests_path, 
-                                            reporter = "silent"))
+test_results <- as.data.frame(test_file(path = full_tests_path, 
+                                        reporter = "silent"))
 
-# 4. Generate the Markdown Table
-cat("| Test Case | Status |\n| :--- | :--- |\n")
+report <- c(report, "### Test Suite Summary", "", "| Test Case | Status |", "| :--- | :--- |")
+
 
 for (i in 1:nrow(test_results)) {
   
   status <- if (test_results$failed[i] == 0 && !test_results$error[i]) "✅ PASSED" else "❌ FAILED"
-  cat(paste0("| ", test_results$test[i], " | ", status, " |\n"))
+  report <- c(report, paste0("| ", test_results$test[i], " | ", status, " |"))
   
 }
 
-# 5. Calculate Final Verdict (Tracking failures and hard runtime crashes)
 total_problems <- sum(test_results$failed) + sum(test_results$error)
 
 if (total_problems > 0) {
   
-  cat("\n### FINAL GRADE: FAIL ❌\n")
+  report <- c(report, "", "### FINAL GRADE: FAIL ❌")
   
 } else {
   
-  cat("\n### FINAL GRADE: PASS 🎉\n")
+  report <- c(report, "", "### FINAL GRADE: PASS 🎉")
   
 }
+
+writeLines(report, "../../feedback.md")
