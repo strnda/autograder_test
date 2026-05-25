@@ -5,13 +5,11 @@
 
 # TASK 1: Vector Creation & Arithmetic
 weights <- c(55, 62, 78, 91, 48)
-# Student mistake: Multiplied by 2.0 instead of 2.2
-weights_lb <- weights * 2.0 
+weights_lb <- weights * 2.2
 
 
 # TASK 2: Vector Subsetting
-# Student mistake: Extracted 1st and 2nd elements instead of 3rd and 5th
-selected_weights <- weights_lb[c(1, 2)]
+selected_weights <- weights_lb[c(3, 5)]
 
 
 # TASK 3: Basic Built-in Functions
