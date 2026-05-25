@@ -49,15 +49,14 @@ jobs:
           echo "STUDENT_FILE=$STUDENT_FILE" >> $GITHUB_OUTPUT
 
       # Step 3: Anti-cheating security check
-      # Forcefully restores the master run_tests.R from YOUR main branch for this specific assignment
+      # Centralized Change: Forcefully restores your master grading file from your main branch
       - name: Force restore master grading tests
         if: steps.detect-folder.outputs.ASSIGNMENT_DIR != ''
         run: |
           git fetch origin main
-          git checkout origin/main -- ${{ steps.detect-folder.outputs.ASSIGNMENT_DIR }}/run_tests.R
+          git checkout origin/main -- .autograder/run_tests.R
 
       # Step 4: Configure the virtual machine for R
-      # use-public-rspm ensures fast, pre-compiled binary installs on Linux
       - name: Set up R
         if: steps.detect-folder.outputs.ASSIGNMENT_DIR != ''
         uses: r-lib/actions/setup-r@v2
@@ -73,7 +72,8 @@ jobs:
             any::tidyverse
             any::testthat
 
-      # Step 6: Run the grading engine
+      # Step 6: Run the Centralized Grading Engine
+      # Centralized Change: Passes both folder string and file string as distinct command line parameters
       - name: Run Autograder
         id: run_tests
         if: steps.detect-folder.outputs.ASSIGNMENT_DIR != ''
@@ -81,38 +81,14 @@ jobs:
           ASSIGNMENT_DIR: ${{ steps.detect-folder.outputs.ASSIGNMENT_DIR }}
           STUDENT_FILE: ${{ steps.detect-folder.outputs.STUDENT_FILE }}
         run: |
-          cd $ASSIGNMENT_DIR
-          
-          # Catch if they accidentally target or overwrite the test file name (case-insensitive check)
-          if [ "${STUDENT_FILE,,}" = "run_tests.r" ]; then
-            echo "# ❌ Error: You cannot submit changes to run_tests.R" > ../../feedback.md
+          # Verify student is not messing with the testing infrastructure directly
+          if [ "${STUDENT_FILE,,}" = "tests.r" ] || [ "${STUDENT_FILE,,}" = "run_tests.r" ]; then
+            echo "# ❌ Error: Invalid filename targeting. Do not alter system test files." > feedback.md
             exit 1
           fi
 
-          # Pass the dynamic filename into the R test script
-          Rscript run_tests.R "$STUDENT_FILE" > ../../feedback.md
+          # Call the core engine in the root directory and dump log strings into the markdown scorecard
+          Rscript .autograder/run_tests.R "$ASSIGNMENT_DIR" "$STUDENT_FILE" > feedback.md
         continue-on-error: true
 
-      # Step 7: Handle normal PRs (ungraded homework/notes/docs)
-      - name: Handle Ungraded Submission
-        if: steps.detect-folder.outputs.ASSIGNMENT_DIR == ''
-        run: |
-          echo "# ℹ️ General Submission Noted" > feedback.md
-          echo "This Pull Request does not contain a formal assignment file matching the tracking format (\`XX_name.R\` or \`XX_name.r\`)." >> feedback.md
-          echo "No automated tests were executed. This code is ready for human review!" >> feedback.md
-
-      # Step 8: Post the Markdown scorecard directly onto the PR thread
-      - name: Post feedback to Pull Request
-        uses: marocchino/sticky-pull-request-comment@v2
-        with:
-          header: autograder-results
-          path: feedback.md
-
-      # Step 9: Make the workflow pass or fail based on test criteria
-      - name: Check test status
-        if: steps.detect-folder.outputs.ASSIGNMENT_DIR != ''
-        run: |
-          if grep -q "FAIL" feedback.md; then
-            echo "Tests failed!"
-            exit 1
-          fi
+      # Step 7: Handle normal PRs (ungraded homework/
