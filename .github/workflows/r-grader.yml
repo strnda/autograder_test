@@ -82,13 +82,12 @@ jobs:
           STUDENT_FILE: ${{ steps.detect-folder.outputs.STUDENT_FILE }}
         run: |
           if [ "${STUDENT_FILE,,}" = "tests.r" ] || [ "${STUDENT_FILE,,}" = "run_tests.r" ]; then
-            echo "# ❌ Error: Invalid filename targeting. Do not alter system test files." > feedback.md
+            echo "# ❌ Error: Invalid filename targeting." > $GITHUB_WORKSPACE/feedback.md
             exit 1
           fi
 
-          # Change context into the student folder so relative script parsing targets smoothly
-          cd $ASSIGNMENT_DIR
-          Rscript ../../.autograder/run_tests.R "." "$STUDENT_FILE"
+          # Pass the absolute workspace anchor as a 3rd argument to R
+          Rscript $GITHUB_WORKSPACE/.autograder/run_tests.R "$GITHUB_WORKSPACE/$ASSIGNMENT_DIR" "$STUDENT_FILE" "$GITHUB_WORKSPACE/feedback.md"
         continue-on-error: true
 
       # Step 7: Handle normal PRs (ungraded homework/notes/docs)
