@@ -1,0 +1,108 @@
+name: Grade R Assignment
+
+on:
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  grade-submission:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      # Step 1: Pull down the student's PR code
+      - name: Checkout student submission
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetches all history so git diff can see changed files
+
+      # Step 2: Extract assignment directory and check student naming convention
+      - name: Detect Changed Assignment Folder
+        id: detect-folder
+        run: |
+          CHANGED_FILES=$(git diff --name-only origin/main...HEAD)
+          
+          ASSIGNMENT_DIR=""
+          STUDENT_FILE=""
+
+          # Loop through files to find one matching: assignments/assignment_XX/XX_*.R
+          for file in $CHANGED_FILES; do
+            if [[ "$file" =~ ^assignments/assignment_[0-9]+/([0-9]+)_.*\.R$ ]]; then
+              ASSIGNMENT_DIR=$(dirname "$file")
+              STUDENT_FILE=$(basename "$file")
+              break # Found the official assignment file, exit loop
+            fi
+          done
+          
+          echo "ASSIGNMENT_DIR=$ASSIGNMENT_DIR" >> $GITHUB_OUTPUT
+          echo "STUDENT_FILE=$STUDENT_FILE" >> $GITHUB_OUTPUT
+
+      # Step 3: Anti-cheating security check
+      # Forcefully restores the master run_tests.R from YOUR main branch for this specific assignment
+      - name: Force restore master grading tests
+        if: steps.detect-folder.outputs.ASSIGNMENT_DIR != ''
+        run: |
+          git fetch origin main
+          git checkout origin/main -- ${{ steps.detect-folder.outputs.ASSIGNMENT_DIR }}/run_tests.R
+
+      # Step 4: Configure the virtual machine for R
+      # use-public-rspm ensures fast, pre-compiled binary installs on Linux
+      - name: Set up R
+        if: steps.detect-folder.outputs.ASSIGNMENT_DIR != ''
+        uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true 
+
+      # Step 5: Cache packages to optimize runtime speed
+      - name: Setup R dependencies cache
+        if: steps.detect-folder.outputs.ASSIGNMENT_DIR != ''
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          packages: |
+            any::tidyverse
+            any::testthat
+
+      # Step 6: Run the grading engine
+      - name: Run Autograder
+        id: run_tests
+        if: steps.detect-folder.outputs.ASSIGNMENT_DIR != ''
+        env:
+          ASSIGNMENT_DIR: ${{ steps.detect-folder.outputs.ASSIGNMENT_DIR }}
+          STUDENT_FILE: ${{ steps.detect-folder.outputs.STUDENT_FILE }}
+        run: |
+          cd $ASSIGNMENT_DIR
+          
+          # Catch if they accidentally target or overwrite the test file name
+          if [ "$STUDENT_FILE" = "run_tests.R" ]; then
+            echo "# ❌ Error: You cannot submit changes to run_tests.R" > ../../feedback.md
+            exit 1
+          fi
+
+          # Pass the dynamic filename into the R test script
+          Rscript run_tests.R "$STUDENT_FILE" > ../../feedback.md
+        continue-on-error: true
+
+      # Step 7: Handle normal PRs (ungraded homework/notes)
+      - name: Handle Ungraded Submission
+        if: steps.detect-folder.outputs.ASSIGNMENT_DIR == ''
+        run: |
+          echo "# ℹ️ General Submission Noted" > feedback.md
+          echo "This Pull Request does not contain a formal assignment file matching the tracking format (\`XX_name.R\`)." >> feedback.md
+          echo "No automated tests were executed. This code is ready for human review!" >> feedback.md
+
+      # Step 8: Post the Markdown scorecard directly onto the PR thread
+      - name: Post feedback to Pull Request
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: autograder-results
+          path: feedback.md
+
+      # Step 9: Make the workflow pass or fail based on test criteria
+      - name: Check test status
+        if: steps.detect-folder.outputs.ASSIGNMENT_DIR != ''
+        run: |
+          if grep -q "FAIL" feedback.md; then
+            echo "Tests failed!"
+            exit 1
+          fi
