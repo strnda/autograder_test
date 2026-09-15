@@ -7,63 +7,44 @@ on:
 jobs:
   grade-submission:
     runs-on: ubuntu-latest
-    env:
-      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
-
     steps:
-      # Step 1: Pull down the student's PR code
       - name: Checkout student submission
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Fetches full history so git diff can compare branches accurately
+          fetch-depth: 0
 
-      # Step 2: Extract assignment directory (Case-Insensitive for .R or .r)
       - name: Detect Changed Assignment Folder
         id: detect-folder
         run: |
-          # Fetch the base branch history so git diff can reference it
           git fetch origin ${{ github.base_ref }} --depth=1
           CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
-          
-          echo "--- DEBUG INFO ---"
-          echo "Detected files changed in this PR:"
-          echo "$CHANGED_FILES"
-          echo "------------------"
 
           ASSIGNMENT_DIR=""
           STUDENT_FILE=""
 
-          # Loop through files to find one matching: assignments/.../XX_*.R (or .r)
           for file in $CHANGED_FILES; do
             if [[ "$file" =~ assignments/.*\/[0-9]+_.*\.[rR]$ ]]; then
               ASSIGNMENT_DIR=$(dirname "$file")
               STUDENT_FILE=$(basename "$file")
-              break # Found the official assignment file, exit loop
+              break
             fi
           done
-          
-          echo "Found Assignment Directory: $ASSIGNMENT_DIR"
-          echo "Found Student File: $STUDENT_FILE"
-          
+
           echo "ASSIGNMENT_DIR=$ASSIGNMENT_DIR" >> $GITHUB_OUTPUT
           echo "STUDENT_FILE=$STUDENT_FILE" >> $GITHUB_OUTPUT
 
-      # Step 3: Anti-cheating security check
-      # Forcefully restores your master grading file from your main branch
       - name: Force restore master grading tests
         if: steps.detect-folder.outputs.ASSIGNMENT_DIR != ''
         run: |
           git fetch origin main
           git checkout origin/main -- .autograder/run_tests.R
 
-      # Step 4: Configure the virtual machine for R
       - name: Set up R
         if: steps.detect-folder.outputs.ASSIGNMENT_DIR != ''
         uses: r-lib/actions/setup-r@v2
         with:
           use-public-rspm: true 
 
-      # Step 5: Cache packages to optimize runtime speed
       - name: Setup R dependencies cache
         if: steps.detect-folder.outputs.ASSIGNMENT_DIR != ''
         uses: r-lib/actions/setup-r-dependencies@v2
@@ -72,10 +53,7 @@ jobs:
             any::tidyverse
             any::testthat
 
-      # Step 6: Run the Centralized Grading Engine
-      # R script handles generating and dropping the feedback file into the root folder natively
       - name: Run Autograder
-        id: run_tests
         if: steps.detect-folder.outputs.ASSIGNMENT_DIR != ''
         env:
           ASSIGNMENT_DIR: ${{ steps.detect-folder.outputs.ASSIGNMENT_DIR }}
@@ -86,26 +64,30 @@ jobs:
             exit 1
           fi
 
-          # Pass the absolute workspace anchor as a 3rd argument to R
           Rscript $GITHUB_WORKSPACE/.autograder/run_tests.R "$GITHUB_WORKSPACE/$ASSIGNMENT_DIR" "$STUDENT_FILE" "$GITHUB_WORKSPACE/feedback.md"
         continue-on-error: true
 
-      # Step 7: Handle normal PRs (ungraded homework/notes/docs)
       - name: Handle Ungraded Submission
         if: steps.detect-folder.outputs.ASSIGNMENT_DIR == ''
         run: |
           echo "# ℹ️ General Submission Noted" > feedback.md
-          echo "This Pull Request does not contain a formal assignment file matching the tracking format (\`XX_name.R\` or \`XX_name.r\`)." >> feedback.md
-          echo "No automated tests were executed. This code is ready for human review!" >> feedback.md
+          echo "This Pull Request does not contain a formal assignment file matching the tracking format." >> feedback.md
 
-      # Step 8: Post the Markdown scorecard directly onto the PR thread
-      - name: Post feedback to Pull Request
-        uses: marocchino/sticky-pull-request-comment@v2
+      # Save the PR number and feedback as artifacts for the commenter workflow
+      - name: Save PR metadata and feedback
+        if: always()
+        run: |
+          echo "${{ github.event.pull_request.number }}" > pr_number.txt
+
+      - name: Upload feedback artifact
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          header: autograder-results
-          path: feedback.md
+          name: pr-feedback
+          path: |
+            feedback.md
+            pr_number.txt
 
-      # Step 9: Make the workflow pass or fail based on test criteria
       - name: Check test status
         if: steps.detect-folder.outputs.ASSIGNMENT_DIR != ''
         run: |
