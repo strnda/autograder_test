@@ -26,7 +26,6 @@ jobs:
       - name: Detect Changed Assignment Folder
         id: detect-folder
         run: |
-          # Ensure base branch is fetched for diff comparison
           BASE_REF="${{ github.base_ref || 'main' }}"
           git fetch origin "$BASE_REF" --depth=1
           CHANGED_FILES=$(git diff --name-only "origin/$BASE_REF"...HEAD)
@@ -106,7 +105,6 @@ jobs:
       - name: Save PR metadata and feedback
         if: always()
         run: |
-          # Resolves PR number whether triggered via PR event or manual dispatch
           PR_NUM="${{ github.event.pull_request.number || github.event.inputs.pr_number }}"
           echo "$PR_NUM" > pr_number.txt
 
