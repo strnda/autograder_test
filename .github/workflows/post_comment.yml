@@ -1,0 +1,32 @@
+name: Post Feedback Comment
+
+on:
+  workflow_run:
+    workflows: ["Grade R Assignment"]
+    types:
+      - completed
+
+jobs:
+  comment:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Download feedback artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: pr-feedback
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Read PR number
+        id: pr
+        run: |
+          echo "number=$(cat pr_number.txt)" >> $GITHUB_OUTPUT
+
+      - name: Post sticky PR comment
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          number: ${{ steps.pr.outputs.number }}
+          header: autograder-results
+          path: feedback.md
