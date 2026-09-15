@@ -15,9 +15,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Check out the PR branch (works for pull_request and manual dispatch)
+      # Step 1: Check out the PR branch using Node 24-native action
       - name: Checkout student submission
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.inputs.pr_number && format('refs/pull/{0}/head', github.event.inputs.pr_number) || '' }}
           fetch-depth: 0
@@ -101,7 +101,7 @@ jobs:
           echo "This Pull Request does not contain a formal assignment file matching the tracking format (\`XX_name.R\` or \`XX_name.r\`)." >> feedback.md
           echo "No automated tests were executed. This code is ready for human review!" >> feedback.md
 
-      # Step 8: Save PR metadata and feedback as artifacts for the commenter workflow
+      # Step 8: Save PR metadata and feedback as artifacts using Node 24-native action
       - name: Save PR metadata and feedback
         if: always()
         run: |
@@ -110,7 +110,7 @@ jobs:
 
       - name: Upload feedback artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: pr-feedback
           path: |
