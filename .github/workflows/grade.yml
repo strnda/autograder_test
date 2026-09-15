@@ -27,8 +27,9 @@ jobs:
         id: detect-folder
         run: |
           BASE_REF="${{ github.base_ref || 'main' }}"
-          git fetch origin "$BASE_REF" --depth=1
-          CHANGED_FILES=$(git diff --name-only "origin/$BASE_REF"...HEAD)
+          # Fetch full history for the base branch to resolve the merge base
+          git fetch origin "$BASE_REF"
+          CHANGED_FILES=$(git diff --name-only origin/"$BASE_REF"...HEAD)
 
           echo "--- DEBUG INFO ---"
           echo "Detected files changed in this PR:"
