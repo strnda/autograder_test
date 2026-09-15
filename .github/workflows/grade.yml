@@ -3,25 +3,43 @@ name: Grade R Assignment
 on:
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "Pull Request Number to Grade (e.g., 42)"
+        required: true
+        type: string
 
 jobs:
   grade-submission:
     runs-on: ubuntu-latest
+
     steps:
+      # Step 1: Check out the PR branch (works for pull_request and manual dispatch)
       - name: Checkout student submission
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.inputs.pr_number && format('refs/pull/{0}/head', github.event.inputs.pr_number) || '' }}
           fetch-depth: 0
 
+      # Step 2: Extract assignment directory (Case-Insensitive for .R or .r)
       - name: Detect Changed Assignment Folder
         id: detect-folder
         run: |
-          git fetch origin ${{ github.base_ref }} --depth=1
-          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+          # Ensure base branch is fetched for diff comparison
+          BASE_REF="${{ github.base_ref || 'main' }}"
+          git fetch origin "$BASE_REF" --depth=1
+          CHANGED_FILES=$(git diff --name-only "origin/$BASE_REF"...HEAD)
+
+          echo "--- DEBUG INFO ---"
+          echo "Detected files changed in this PR:"
+          echo "$CHANGED_FILES"
+          echo "------------------"
 
           ASSIGNMENT_DIR=""
           STUDENT_FILE=""
 
+          # Loop through files to find one matching: assignments/.../XX_*.R (or .r)
           for file in $CHANGED_FILES; do
             if [[ "$file" =~ assignments/.*\/[0-9]+_.*\.[rR]$ ]]; then
               ASSIGNMENT_DIR=$(dirname "$file")
@@ -30,21 +48,28 @@ jobs:
             fi
           done
 
+          echo "Found Assignment Directory: $ASSIGNMENT_DIR"
+          echo "Found Student File: $STUDENT_FILE"
+
           echo "ASSIGNMENT_DIR=$ASSIGNMENT_DIR" >> $GITHUB_OUTPUT
           echo "STUDENT_FILE=$STUDENT_FILE" >> $GITHUB_OUTPUT
 
+      # Step 3: Anti-cheating security check
+      # Forcefully restores master grading tests from origin/main
       - name: Force restore master grading tests
         if: steps.detect-folder.outputs.ASSIGNMENT_DIR != ''
         run: |
           git fetch origin main
           git checkout origin/main -- .autograder/run_tests.R
 
+      # Step 4: Configure the virtual machine for R
       - name: Set up R
         if: steps.detect-folder.outputs.ASSIGNMENT_DIR != ''
         uses: r-lib/actions/setup-r@v2
         with:
-          use-public-rspm: true 
+          use-public-rspm: true
 
+      # Step 5: Cache packages to optimize runtime speed
       - name: Setup R dependencies cache
         if: steps.detect-folder.outputs.ASSIGNMENT_DIR != ''
         uses: r-lib/actions/setup-r-dependencies@v2
@@ -53,7 +78,9 @@ jobs:
             any::tidyverse
             any::testthat
 
+      # Step 6: Run the Centralized Grading Engine
       - name: Run Autograder
+        id: run_tests
         if: steps.detect-folder.outputs.ASSIGNMENT_DIR != ''
         env:
           ASSIGNMENT_DIR: ${{ steps.detect-folder.outputs.ASSIGNMENT_DIR }}
@@ -67,17 +94,21 @@ jobs:
           Rscript $GITHUB_WORKSPACE/.autograder/run_tests.R "$GITHUB_WORKSPACE/$ASSIGNMENT_DIR" "$STUDENT_FILE" "$GITHUB_WORKSPACE/feedback.md"
         continue-on-error: true
 
+      # Step 7: Handle normal PRs (ungraded homework/notes/docs)
       - name: Handle Ungraded Submission
         if: steps.detect-folder.outputs.ASSIGNMENT_DIR == ''
         run: |
           echo "# ℹ️ General Submission Noted" > feedback.md
-          echo "This Pull Request does not contain a formal assignment file matching the tracking format." >> feedback.md
+          echo "This Pull Request does not contain a formal assignment file matching the tracking format (\`XX_name.R\` or \`XX_name.r\`)." >> feedback.md
+          echo "No automated tests were executed. This code is ready for human review!" >> feedback.md
 
-      # Save the PR number and feedback as artifacts for the commenter workflow
+      # Step 8: Save PR metadata and feedback as artifacts for the commenter workflow
       - name: Save PR metadata and feedback
         if: always()
         run: |
-          echo "${{ github.event.pull_request.number }}" > pr_number.txt
+          # Resolves PR number whether triggered via PR event or manual dispatch
+          PR_NUM="${{ github.event.pull_request.number || github.event.inputs.pr_number }}"
+          echo "$PR_NUM" > pr_number.txt
 
       - name: Upload feedback artifact
         if: always()
@@ -88,6 +119,7 @@ jobs:
             feedback.md
             pr_number.txt
 
+      # Step 9: Make the workflow pass or fail based on test criteria
       - name: Check test status
         if: steps.detect-folder.outputs.ASSIGNMENT_DIR != ''
         run: |
