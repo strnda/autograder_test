@@ -11,19 +11,23 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
+
     steps:
+      # Step 1: Download the artifact uploaded by the grade-submission workflow
       - name: Download feedback artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: pr-feedback
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      # Step 2: Extract the PR number stored in pr_number.txt
       - name: Read PR number
         id: pr
         run: |
           echo "number=$(cat pr_number.txt)" >> $GITHUB_OUTPUT
 
+      # Step 3: Post or update the sticky comment on the target PR
       - name: Post sticky PR comment
         uses: marocchino/sticky-pull-request-comment@v2
         with:
